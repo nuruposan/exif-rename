@@ -5,6 +5,16 @@ function abort() {
   exit 2
 }
 
+function checkenv() {
+  type "exiftool" >/dev/null 2>&1; EQ=$?
+  type "jq" >/dev/null 2>&1; JQ=$?
+
+  if [ "$ET$JQ" -ne "00" ]; then
+   echo "Please install exiftool and jq" >&2
+   exit 3
+  fi
+}
+
 function jq2tsv() {
   jq '.[0]' \
     | jq -r '["mv",."SourceFile",."File:Directory",."EXIF:CreateDate",."Composite:ImageSize",."EXIF:Model"]|@tsv'
@@ -22,13 +32,7 @@ function tsv2cmd() {
 
 trap 'abort' INT
 
-whereis "exiftool" >/dev/null; FOUND_ET=$?
-whereis "jq" >/dev/null; FOUND_JQ=$?
-
-if [ "$FOUND_ET" -ne "0" ] || [ "$FOUND_JQ" -ne "0" ]; then
-  echo "Dependent softwares were not found. Please install exiftool and jq" >&2
-  exit 3
-fi
+checkenv
 
 SRC_DIR="$1"
 if [ $# -ne 1 ] || [ ! -d "$SRC_DIR" ]; then

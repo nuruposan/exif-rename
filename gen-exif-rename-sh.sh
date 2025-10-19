@@ -15,17 +15,22 @@ function checkEnv() {
   fi
 }
 
-jq2tsv() {
+function jq2tsv() {
   jq '.[0]' \
     | jq -r '[."EXIF:CreateDate",."Composite:ImageSize",."EXIF:Model"]|@tsv'
 }
 
 function tsv2dst() {
-  sed -e "s/\([0-9]\+\):\([0-9]\+\):\([0-9]\+\) /\1\2\3-/" \
-    -e "s/\([0-9]\+\):\([0-9]\+\):\([0-9]\+\)\t/\1\2\3_/" \
-    -e "s/\t/_/" \
-    -e "s/\t/_/" \
-    -e "s/ /-/"
+  sed -e 's/\([0-9]\+\):\([0-9]\+\):\([0-9]\+\) /\1\2\3-/' \
+    -e 's/\([0-9]\+\):\([0-9]\+\):\([0-9]\+\)\t/\1\2\3_/' \
+    -e 's/\t/_/g' \
+    -e 's/ /-/g'
+}
+
+function extractFilename() {
+  sed -e 's/.*\///g' \
+    -e 's/\..\{3,4\}$//' \
+    -e 's/ /-/g'
 }
 
 # verify that the required software is installed
@@ -54,16 +59,24 @@ if [ "$FILE_NUM" -eq "0" ]; then
 fi
 
 echo "#!/bin/bash"
-echo ""
+echo "#"
 echo "# source dir: ${SRC_DIR} (${FILE_NUM} files)"
 echo "# destination dir: ${DST_DIR}"
 echo "# generated at: "`date "+%Y%m%d-%H%M%S"`
-echo ""
+echo "#"
 
-LOOP_CNT=1
+LOOP_CNT=0
 find $SRC_DIR | grep -i -e "\.jpg$" -e "\.jpeg$" | while read SRC_FILE; do
-  echo -ne "\r($LOOP_CNT/$FILE_NUM) " >&2
+  ((LOOP_CNT = ${LOOP_CNT} + 1))
 
+  if [ $(( ${LOOP_CNT} % 10 )) -eq 0 ]; then
+    PROG_RATE=`echo "scale=2; ${LOOP_CNT} * 100 / ${FILE_NUM}" | bc`
+    echo "echo -ne \"moving files... ${PROG_RATE}% \r\""
+  fi
+
+  echo -ne "\r(${LOOP_CNT}/${FILE_NUM}) " >&2
+
+  # get the 6 chars from md5sum of SRC_FILE
   CHK_STR=`md5sum "${SRC_FILE}" | cut -c 1-6`
 
   if exiftool -exif -if '$exif' "$SRC_FILE" >/dev/null; then
@@ -73,11 +86,11 @@ find $SRC_DIR | grep -i -e "\.jpg$" -e "\.jpeg$" | while read SRC_FILE; do
 
     echo "mv \"${SRC_FILE}\" \"${DST_DIR}/${DST_FILE}\""
   else
-    echo "# no EXIF: ${SRC_FILE}"
+    DST_FILE=`echo ${SRC_FILE} | extractFilename`"_${CHK_STR}.jpg"
+    
+    echo "# NO-EXIF: mv \"${SRC_FILE}\" \"${DST_DIR}/${DST_FILE}\""
   fi
-
-  ((LOOP_CNT = ${LOOP_CNT} + 1))
 done
-echo ""
+echo -e "\ndone." >&2
 
 exit 0
